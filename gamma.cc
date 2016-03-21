@@ -1,0 +1,176 @@
+#include "DetectorConstruction.hh"
+#include "PrimaryGeneratorAction.hh"
+#include "PhysicsList.hh"
+#include "RunAction.hh"
+#include "EventAction.hh"
+#include "SteppingAction.hh"
+#include "StepLimiterBuilder.hh"
+#include "StepMax.hh"
+#include "TrackingAction.hh"
+#include "G4ScoringManager.hh"
+
+#include "Histo.hh"
+
+#include <G4RunManager.hh>
+#include <G4UImanager.hh>
+#include <G4UIterminal.hh>
+#include <G4VisExecutive.hh>
+#include <G4Material.hh>
+#include <G4UserRunAction.hh>
+#include <G4Run.hh>
+#include <G4UItcsh.hh>
+
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <CLHEP/Random/Random.h>
+#include <unistd.h>
+#include <time.h>
+#include <stdlib.h>
+
+#include "G4VModularPhysicsList.hh"
+
+#include <QGSP_BIC.hh>
+#include <QGSP_BIC_HP.hh>
+#include <QGSP_BERT.hh>
+#include <QGSP_BERT_HP.hh>
+//#include <LHEP_PRECO_HP.hh>
+
+using namespace std;
+
+int main(int argc, char** argv)
+{
+    //CLHEP::HepRandom::setTheSeed(time(0));
+    CLHEP::HepRandom::setTheEngine(new CLHEP::RanecuEngine);
+    std::fstream randomFile;
+    randomFile.open("/dev/urandom", std::ios::in | std::ios::binary);
+    unsigned int seed;
+    randomFile.read(reinterpret_cast<char *>(&seed), sizeof(unsigned int));
+    randomFile.close();
+    G4cout << "Random seed is " << seed << G4endl;
+    //G4int seed=time(NULL);
+    CLHEP::HepRandom::setTheSeed(seed);
+
+    if(argc < 3)
+    {
+        G4cout << "\n USAGE: gamma  <ADD_ELECTRODE>  <MAC_FILE_NAME> \n\n" << G4endl;
+        G4cout << "\n where <ADD_ELECTRODE> is either Y or N \n" << G4endl;
+        G4cout << "\n and <MAC_FILE_NAME> is the name of a .mac file in the current directory \n" << G4endl;
+        exit(1);
+    }
+
+    G4String electrodeMode = argv[1]; // add PCB+electrode? (Y|N) as an input argument
+    G4String macFile = argv[2]; // .mac file name as an input argument
+
+    G4String namePrefix = "GAMMA"; // part of the output file name
+    G4String nameOfTheRun = "OUTPUT"; // part of the output file name
+    G4String geometry = "D"; // D == simple diamond model, B == B1 detector model
+    G4String apertureMaterial = "vacuum"; // detector in vacuum
+    G4int diamondThickness = 500; // [micrometers]
+    G4String phys = "QB"; // E == Standard EM package, Q == QGSP_BIC package,  QB == QGSP_BERT package
+    G4String histoResolution = "keV"; // resolution of the histograms: "eV" | "keV" | "MeV"
+    G4String calc = "sim"; // run full simulation
+
+    G4bool addPCBAndElectrode = false;
+
+    if(electrodeMode == "Y")
+        addPCBAndElectrode = true;
+
+    G4cout << "Creating runManager object..." << G4endl;
+    G4RunManager * runManager = new G4RunManager;
+    G4cout << "runManager object is ready..." << G4endl;
+
+    G4cout << "Creating detector_c object..." << G4endl;
+    DetectorConstruction* detector_c = new DetectorConstruction(apertureMaterial, diamondThickness, addPCBAndElectrode);
+    G4cout << "detector_c object is ready..." << G4endl;
+
+    G4cout << "SetUserInitialization(detector_c)..." << G4endl;
+    runManager->SetUserInitialization(detector_c);
+    G4cout << "SetUserInitialization(detector_c) is finished..." << G4endl;
+
+    G4VModularPhysicsList *p;
+    QGSP_BIC_HP *qgsp_bic_hp;
+    QGSP_BIC *qgsp_bic;
+    QGSP_BERT_HP *qgsp_bert_hp;
+    QGSP_BERT *qgsp_bert;
+
+    if (phys == "E")
+    {
+        p = new PhysicsList;
+        runManager->SetUserInitialization(p);
+
+        G4cout << "\n -- STD_EM is registered \n\n" << G4endl;
+    }
+    else if (phys == "Q")
+    {
+        qgsp_bic_hp = new QGSP_BIC_HP();
+        runManager->SetUserInitialization(qgsp_bic_hp);
+
+        G4cout << "\n -- QGSP_BIC_HP is registered \n\n" << G4endl;
+    }
+    else if (phys == "QB")
+    {
+        qgsp_bert = new QGSP_BERT();
+        runManager->SetUserInitialization(qgsp_bert);
+
+        G4cout << "\n -- QGSP_BERT is registered \n\n" << G4endl;
+    }
+
+    PrimaryGeneratorAction* primary_generator_action = new PrimaryGeneratorAction(detector_c);
+    runManager->SetUserAction(primary_generator_action);
+
+    RunAction* run_action = new RunAction(detector_c, "calc", primary_generator_action, nameOfTheRun, namePrefix, histoResolution, calc);
+    runManager->SetUserAction(run_action);
+
+    EventAction* event_action = new EventAction(run_action, "calc");
+    runManager->SetUserAction(event_action);
+
+    SteppingAction* step_action = new SteppingAction(run_action, event_action);
+    runManager->SetUserAction(step_action);
+
+    G4UserTrackingAction* tracking_action = new TrackingAction(run_action, event_action);
+    runManager->SetUserAction(tracking_action);
+
+    //runManager->Initialize();
+
+    cout<<"===============================================================";
+    cout<<endl;
+    cout<< *(G4Material::GetMaterialTable()) << endl;
+    cout<<"===============================================================";
+    cout<<endl;
+
+    G4UImanager * UI = G4UImanager::GetUIpointer();
+
+
+#ifdef G4VIS_USE
+    G4VisManager* visManager = new G4VisExecutive;
+    visManager->Initialize();
+#endif
+
+    G4UIsession * session = 0;
+#ifdef G4UI_USE_TCSH
+    session = new G4UIterminal(new G4UItcsh);
+#else
+    session = new G4UIterminal();
+#endif
+
+
+#ifdef G4VIS_USE
+    G4String commandSequence = "/control/execute ";
+    commandSequence += macFile;
+
+    G4cout << "\n\n STARTING .mac file execution... \n\n" << G4endl;
+    UI->ApplyCommand(commandSequence);
+#endif
+
+    //session->SessionStart();
+    delete session;
+
+#ifdef G4VIS_USE
+    delete visManager;
+#endif
+
+    delete runManager;
+
+    return 0;
+}

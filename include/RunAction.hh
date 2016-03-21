@@ -1,0 +1,84 @@
+#ifndef RunAction_h
+#define RunAction_h 1
+
+#include "G4UserRunAction.hh"
+#include "globals.hh"
+#include <vector>
+#include <math.h>
+
+#include "Data.hh"
+#include "ProcessesCount.hh"
+#include "ParticlesCount.hh"
+
+#include "G4Run.hh"
+#include <fstream>
+#include "G4UIcommand.hh"
+
+#include "G4EmCalculator.hh"
+
+#include"DetectorConstruction.hh"
+#include "PrimaryGeneratorAction.hh"
+
+#include"G4ParticleDefinition.hh"
+#include"G4GenericIon.hh"
+
+#include"G4ParticleTable.hh"
+
+#include"G4Proton.hh"
+#include"G4Alpha.hh"
+#include"G4Deuteron.hh"
+#include"G4Triton.hh"
+#include"G4He3.hh"
+
+#include "G4BetheBlochModel.hh"
+#include "G4BraggModel.hh"
+#include "G4BraggIonModel.hh"
+#include "G4ICRU49NuclearStoppingModel.hh"
+#include "G4IonParametrisedLossModel.hh"
+
+#include"G4UnitsTable.hh"
+
+class G4Run;
+
+class RunAction : public G4UserRunAction
+{
+public:
+    RunAction(DetectorConstruction*, G4String, PrimaryGeneratorAction*, G4String, G4String, G4String, G4String);
+    ~RunAction();
+
+public:
+    void BeginOfRunAction(const G4Run*);
+    void EndOfRunAction(const G4Run*);
+
+    DetectorConstruction* myDet;
+    PrimaryGeneratorAction* myPrimGen;
+
+    G4EmCalculator * gcalc;
+
+    G4bool calculator;
+    G4String info;
+    Data * data;
+    G4String name;
+    G4String namePrefix;
+
+    std::vector<G4double> * eDepValues;
+
+    void saveEnergyDepositInTracker(G4int runID, G4double vertexEnergy, G4double probability, G4double eDep, G4double probabilityElectrode, G4int numOfEvents);
+    void saveInteractionRateInDiamond(G4int runID, G4double rate);
+    void saveStats(G4int runID);
+
+    void CountNuclearChannels(G4String nuclearChannel);
+    void CountParticles(G4String partName);
+    void CountProcesses(G4String procName);
+
+    void CountProcessesChain(G4String gammaProcessesChainInEvent);
+
+    void saveGCalcTables();
+};
+
+#endif
+
+
+
+
+
